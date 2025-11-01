@@ -1,5 +1,5 @@
-
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+// Fix: Add imports for React and ReactDOM.
+import React from 'react';
 import ReactDOM from 'react-dom/client';
 
 // --- ICONS ---
@@ -79,25 +79,25 @@ const PasswordRequirement: React.FC<{ met: boolean; label: string }> = ({ met, l
 );
 
 const App: React.FC = () => {
-  const [files, setFiles] = useState<File[]>([]);
-  const [password, setPassword] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [passwordValidation, setPasswordValidation] = useState({
+  const [files, setFiles] = React.useState<File[]>([]);
+  const [password, setPassword] = React.useState<string>('');
+  const [showPassword, setShowPassword] = React.useState<boolean>(false);
+  const [passwordValidation, setPasswordValidation] = React.useState({
     minLength: false,
     hasNumber: false,
     hasSpecialChar: false,
     hasUpperCase: false,
   });
-  const [compressionLevel, setCompressionLevel] = useState<number>(5);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [progress, setProgress] = useState<number>(0);
-  const [statusText, setStatusText] = useState<string>('');
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const totalSizeRef = useRef<number>(0);
-  const bytesZippedRef = useRef<number>(0);
+  const [compressionLevel, setCompressionLevel] = React.useState<number>(5);
+  const [isProcessing, setIsProcessing] = React.useState<boolean>(false);
+  const [progress, setProgress] = React.useState<number>(0);
+  const [statusText, setStatusText] = React.useState<string>('');
+  const [downloadUrl, setDownloadUrl] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const totalSizeRef = React.useRef<number>(0);
+  const bytesZippedRef = React.useRef<number>(0);
 
-  useEffect(() => {
+  React.useEffect(() => {
     return () => {
       if (downloadUrl) {
         URL.revokeObjectURL(downloadUrl);
@@ -105,7 +105,7 @@ const App: React.FC = () => {
     };
   }, [downloadUrl]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!password) {
         setPasswordValidation({ minLength: false, hasNumber: false, hasSpecialChar: false, hasUpperCase: false });
         return;
@@ -118,18 +118,18 @@ const App: React.FC = () => {
     setPasswordValidation({ minLength, hasNumber, hasSpecialChar, hasUpperCase });
   }, [password]);
 
-  const handleFileChange = useCallback((selectedFiles: FileList | null) => {
+  const handleFileChange = React.useCallback((selectedFiles: FileList | null) => {
     if (selectedFiles) {
       setFiles(prevFiles => [...prevFiles, ...Array.from(selectedFiles)]);
     }
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragOver = React.useCallback((e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
     e.stopPropagation();
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDrop = React.useCallback((e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
     e.stopPropagation();
     handleFileChange(e.dataTransfer.files);
