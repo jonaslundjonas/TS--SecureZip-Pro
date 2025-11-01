@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ZipIcon, FileIcon, LockIcon, DownloadIcon, TrashIcon, EyeOpenIcon, EyeClosedIcon } from './components/icons';
+import { ZipIcon, FileIcon, LockIcon, DownloadIcon, TrashIcon, EyeOpenIcon, EyeClosedIcon, CheckIcon, CloseIcon } from './components/icons.tsx';
 
 // Tell TypeScript that the zip object will be available on the window
 declare const zip: any;
@@ -14,10 +14,23 @@ const formatBytes = (bytes: number, decimals = 2): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
+const PasswordRequirement: React.FC<{ met: boolean; label: string }> = ({ met, label }) => (
+    <li className={`flex items-center gap-2 transition-colors ${met ? 'text-green-400' : 'text-gray-500'}`}>
+        {met ? <CheckIcon className="w-4 h-4" /> : <CloseIcon className="w-4 h-4" />}
+        <span>{label}</span>
+    </li>
+);
+
 const App: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [passwordValidation, setPasswordValidation] = useState({
+    minLength: false,
+    hasNumber: false,
+    hasSpecialChar: false,
+    hasUpperCase: false,
+  });
   const [compressionLevel, setCompressionLevel] = useState<number>(5);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
@@ -34,6 +47,19 @@ const App: React.FC = () => {
       }
     };
   }, [downloadUrl]);
+
+  useEffect(() => {
+    if (!password) {
+        setPasswordValidation({ minLength: false, hasNumber: false, hasSpecialChar: false, hasUpperCase: false });
+        return;
+    }
+    const minLength = password.length >= 12;
+    const hasNumber = /[0-9]/.test(password);
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+    const hasUpperCase = /[A-Z]/.test(password);
+
+    setPasswordValidation({ minLength, hasNumber, hasSpecialChar, hasUpperCase });
+  }, [password]);
 
   const handleFileChange = useCallback((selectedFiles: FileList | null) => {
     if (selectedFiles) {
@@ -60,6 +86,14 @@ const App: React.FC = () => {
     if (files.length === 0) {
       setError('Please select at least one file.');
       return;
+    }
+    
+    const isPasswordSet = password.length > 0;
+    const isPasswordValid = Object.values(passwordValidation).every(Boolean);
+
+    if (isPasswordSet && !isPasswordValid) {
+        setError('Password does not meet the security requirements.');
+        return;
     }
 
     setIsProcessing(true);
@@ -123,6 +157,9 @@ const App: React.FC = () => {
   };
 
   const totalFilesSize = files.reduce((acc, file) => acc + file.size, 0);
+  const isPasswordSet = password.length > 0;
+  const isPasswordValid = Object.values(passwordValidation).every(Boolean);
+  const isCreateButtonDisabled = files.length === 0 || (isPasswordSet && !isPasswordValid);
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex items-center justify-center p-4">
@@ -212,12 +249,22 @@ const App: React.FC = () => {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter a strong password"
-                      className="w-full pl-10 pr-10 py-2.5 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      className="w-full pl-10 pr-12 py-2.5 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200">
-                      {showPassword ? <EyeClosedIcon className="w-5 h-5" /> : <EyeOpenIcon className="w-5 h-5" />}
-                    </button>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-200 transition-colors" title={showPassword ? "Hide password" : "Show password"}>
+                            {showPassword ? <EyeClosedIcon className="w-5 h-5" /> : <EyeOpenIcon className="w-5 h-5" />}
+                        </button>
+                    </div>
                   </div>
+                  {isPasswordSet && (
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
+                        <PasswordRequirement met={passwordValidation.minLength} label="At least 12 characters" />
+                        <PasswordRequirement met={passwordValidation.hasUpperCase} label="One uppercase letter" />
+                        <PasswordRequirement met={passwordValidation.hasNumber} label="One number" />
+                        <PasswordRequirement met={passwordValidation.hasSpecialChar} label="One special character" />
+                    </ul>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="compression" className="block text-sm font-medium text-gray-300 mb-2">
@@ -251,7 +298,7 @@ const App: React.FC = () => {
                 ) : (
                   <button 
                     onClick={handleCreateZip} 
-                    disabled={files.length === 0}
+                    disabled={isCreateButtonDisabled}
                     className="w-full flex items-center justify-center gap-3 py-3 px-6 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105 disabled:scale-100"
                   >
                     <ZipIcon className="w-6 h-6" />
@@ -264,8 +311,11 @@ const App: React.FC = () => {
           )}
 
         </main>
-        <footer className="text-center mt-8 text-gray-500 text-sm">
-          <p>Created by Jonas Lund</p>
+        <footer className="text-center mt-8 text-gray-500 text-sm space-y-2">
+            <p>
+                <strong>Privacy First:</strong> Nothing is stored on a server. All file processing happens locally on your machine.
+            </p>
+            <p>Created by Jonas Lund</p>
         </footer>
       </div>
     </div>
