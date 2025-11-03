@@ -1,0 +1,5 @@
+{
+  "name": "SecureZip Pro",
+  "description": "An advanced web-based tool to generate encrypted and compressed Zip files directly in your browser. Select your files, set a password and compression level, and download your secure archive.",
+  "requestFramePermissions": []
+}
