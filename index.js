@@ -1,12 +1,35 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // The zip object is loaded from an external script and will be available on the window
+    /**
+     * The zip object is loaded from an external script and will be available on the window.
+     * @type {object}
+     */
     const zip = window.zip;
 
     // --- STATE ---
+    /**
+     * An array of files to be zipped.
+     * @type {File[]}
+     */
     let files = [];
+    /**
+     * The total size of all files in bytes.
+     * @type {number}
+     */
     let totalSize = 0;
+    /**
+     * The password to use for encryption.
+     * @type {string}
+     */
     let password = '';
+    /**
+     * The compression level to use.
+     * @type {number}
+     */
     let compressionLevel = 5;
+    /**
+     * An object representing the password validation state.
+     * @type {{minLength: boolean, hasNumber: boolean, hasSpecialChar: boolean, hasUpperCase: boolean}}
+     */
     let passwordValidation = {
         minLength: false,
         hasNumber: false,
@@ -51,6 +74,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const iconTrash = document.getElementById('icon-trash').cloneNode(true);
 
     // --- HELPERS ---
+    /**
+     * Formats a number of bytes into a human-readable string.
+     * @param {number} bytes The number of bytes to format.
+     * @param {number} [decimals=2] The number of decimal places to use.
+     * @returns {string} The formatted string.
+     */
     const formatBytes = (bytes, decimals = 2) => {
         if (bytes === 0) return '0 Bytes';
         const k = 1024;
@@ -61,6 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- UI UPDATE FUNCTIONS ---
+    /**
+     * Renders the list of selected files.
+     */
     const renderFileList = () => {
         fileListEl.innerHTML = '';
         if (files.length === 0) {
@@ -93,6 +125,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    /**
+     * Updates the password validation UI.
+     */
     const updatePasswordValidationUI = () => {
         if (password.length > 0) {
             passwordRequirementsEl.classList.remove('hidden');
@@ -119,6 +154,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    /**
+     * Updates the state of the create button.
+     */
     const updateCreateButtonState = () => {
         const isPasswordSet = password.length > 0;
         const isPasswordValid = Object.values(passwordValidation).every(Boolean);
@@ -126,6 +164,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- EVENT HANDLERS ---
+    /**
+     * Handles the selection of files.
+     * @param {FileList|null} selectedFiles The selected files.
+     */
     const handleFileSelection = (selectedFiles) => {
         if (!selectedFiles) return;
         files.push(...Array.from(selectedFiles));
@@ -133,24 +175,43 @@ document.addEventListener('DOMContentLoaded', () => {
         updateCreateButtonState();
     };
     
+    /**
+     * Handles the dragover event on the drop zone.
+     * @param {DragEvent} e The drag event.
+     */
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.stopPropagation();
         dropZone.classList.add('border-blue-500');
     });
+    /**
+     * Handles the dragleave event on the drop zone.
+     * @param {DragEvent} e The drag event.
+     */
     dropZone.addEventListener('dragleave', (e) => {
         e.preventDefault();
         e.stopPropagation();
         dropZone.classList.remove('border-blue-500');
     });
+    /**
+     * Handles the drop event on the drop zone.
+     * @param {DragEvent} e The drag event.
+     */
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
         dropZone.classList.remove('border-blue-500');
         handleFileSelection(e.dataTransfer ? e.dataTransfer.files : null);
     });
+    /**
+     * Handles the change event on the file input.
+     */
     fileInput.addEventListener('change', () => handleFileSelection(fileInput.files));
 
+    /**
+     * Handles click events on the file list.
+     * @param {MouseEvent} e The mouse event.
+     */
     fileListEl.addEventListener('click', (e) => {
         const removeBtn = e.target.closest('.remove-file-btn');
         if (removeBtn) {
@@ -161,6 +222,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    /**
+     * Handles input events on the password input.
+     * @param {InputEvent} e The input event.
+     */
     passwordInput.addEventListener('input', (e) => {
         password = e.target.value;
         passwordValidation.minLength = password.length >= 12;
@@ -171,6 +236,9 @@ document.addEventListener('DOMContentLoaded', () => {
         updateCreateButtonState();
     });
 
+    /**
+     * Handles click events on the toggle password button.
+     */
     togglePasswordBtn.addEventListener('click', () => {
         const isPassword = passwordInput.type === 'password';
         passwordInput.type = isPassword ? 'text' : 'password';
@@ -179,11 +247,18 @@ document.addEventListener('DOMContentLoaded', () => {
         togglePasswordBtn.title = isPassword ? 'Hide password' : 'Show password';
     });
 
+    /**
+     * Handles input events on the compression slider.
+     * @param {InputEvent} e The input event.
+     */
     compressionSlider.addEventListener('input', (e) => {
         compressionLevel = parseInt(e.target.value, 10);
         compressionLevelValue.textContent = String(compressionLevel);
     });
 
+    /**
+     * Handles click events on the create zip button.
+     */
     createZipBtn.addEventListener('click', async () => {
         errorMessageEl.textContent = '';
         const isPasswordSet = password.length > 0;
@@ -244,6 +319,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    /**
+     * Resets the application to its initial state.
+     */
     const resetApp = () => {
         files = [];
         totalSize = 0;
