@@ -1,10 +1,11 @@
+import { Archive } from 'https://unpkg.com/libarchive.js@2.0.2/dist/libarchive.js';
+
 document.addEventListener('DOMContentLoaded', () => {
     /**
      * The zip object is loaded from an external script and will be available on the window.
      * @type {object}
      */
     const zip = window.zip;
-    const Archive = window.Archive;
 
     // --- STATE ---
     let appMode = 'compress'; // 'compress' or 'extract'
@@ -442,12 +443,25 @@ document.addEventListener('DOMContentLoaded', () => {
             throw new Error('libarchive.js is not loaded correctly.');
         }
 
+        let archive;
         try {
             Archive.init({
-                workerUrl: 'https://unpkg.com/libarchive.js@1.3.0/dist/worker-bundle.js'
+                workerUrl: 'https://unpkg.com/libarchive.js@2.0.2/dist/worker-bundle.js'
             });
 
-            const archive = await Archive.open(file);
+            archive = await Archive.open(file);
+
+            const hasEncrypted = await archive.hasEncryptedData();
+            if (hasEncrypted && !archivePassword) {
+                const newPassword = await promptForPassword();
+                if (newPassword === null) {
+                    await archive.close();
+                    throw new Error('Extraction cancelled.');
+                }
+                await archive.close();
+                return extractWithLibArchive(file, newPassword);
+            }
+
             if (archivePassword) {
                 await archive.usePassword(archivePassword);
             }
@@ -456,8 +470,9 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 entries = await archive.extractFiles();
             } catch (e) {
-                // libarchive.js might throw if password is required or incorrect
-                const newPassword = await promptForPassword(!!archivePassword);
+                console.error("libarchivejs error during extraction:", e);
+                await archive.close();
+                const newPassword = await promptForPassword(true);
                 if (newPassword === null) throw new Error('Extraction cancelled.');
                 return extractWithLibArchive(file, newPassword);
             }
@@ -475,9 +490,11 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             flattenEntries(entries);
+            await archive.close();
             displayExtractedFiles(extractedFiles);
 
         } catch (e) {
+            if (archive) await archive.close();
             throw e;
         }
     };
