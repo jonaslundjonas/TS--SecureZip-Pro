@@ -1,16 +1,38 @@
-import { Archive } from 'libarchive.js';
-import workerUrl from 'libarchive.js/dist/worker-bundle.js?worker&url';
-
-Archive.init({
-    workerUrl
-});
-
 document.addEventListener('DOMContentLoaded', () => {
     /**
-     * The zip object is loaded from an external script and will be available on the window.
-     * @type {object}
+     * Libraries
      */
     const zip = window.zip;
+    let libArchivePromise = null;
+
+    /**
+     * Dynamically loads libarchive.js
+     */
+    const loadLibArchive = async () => {
+        if (libArchivePromise) return libArchivePromise;
+
+        libArchivePromise = (async () => {
+            console.log('Loading libarchive.js...');
+            try {
+                const module = await import('https://unpkg.com/libarchive.js@2.0.2/dist/libarchive.js');
+                const Archive = module.Archive;
+                Archive.init({
+                    workerUrl: 'https://unpkg.com/libarchive.js@2.0.2/dist/worker-bundle.js'
+                });
+                console.log('libarchive.js loaded successfully');
+                return Archive;
+            } catch (e) {
+                console.error('Failed to load libarchive.js:', e);
+                libArchivePromise = null; // Allow retry
+                throw e;
+            }
+        })();
+
+        return libArchivePromise;
+    };
+
+    // Pre-load libarchive.js
+    loadLibArchive().catch(e => console.warn('Delayed libarchive loading:', e));
 
     // --- STATE ---
     let appMode = 'compress'; // 'compress' or 'extract'
@@ -130,20 +152,36 @@ document.addEventListener('DOMContentLoaded', () => {
         files.forEach((file, index) => {
             const fileElement = document.createElement('div');
             fileElement.className = 'flex items-center justify-between bg-gray-700/50 p-3 rounded-lg animate-fade-in';
-            fileElement.innerHTML = `
-                <div class="flex items-center gap-3 overflow-hidden">
-                    <div class="icon-container w-5 h-5 text-gray-400 flex-shrink-0"></div>
-                    <span class="truncate text-sm" title="${file.name}">${file.name}</span>
-                </div>
-                <div class="flex items-center gap-3 flex-shrink-0">
-                    <span class="text-xs text-gray-400">${formatBytes(file.size)}</span>
-                    <button data-index="${index}" class="remove-file-btn p-1 text-gray-400 hover:text-red-400 transition-colors">
-                        <div class="icon-container w-5 h-5"></div>
-                    </button>
-                </div>
-            `;
-            fileElement.querySelector('.icon-container').appendChild(iconFile.cloneNode(true));
-            fileElement.querySelector('.remove-file-btn .icon-container').appendChild(iconTrash.cloneNode(true));
+
+            const leftSection = document.createElement('div');
+            leftSection.className = 'flex items-center gap-3 overflow-hidden';
+            const iconContainer = document.createElement('div');
+            iconContainer.className = 'icon-container w-5 h-5 text-gray-400 flex-shrink-0';
+            iconContainer.appendChild(iconFile.cloneNode(true));
+            const fileNameSpan = document.createElement('span');
+            fileNameSpan.className = 'truncate text-sm';
+            fileNameSpan.textContent = file.name;
+            fileNameSpan.title = file.name;
+            leftSection.appendChild(iconContainer);
+            leftSection.appendChild(fileNameSpan);
+
+            const rightSection = document.createElement('div');
+            rightSection.className = 'flex items-center gap-3 flex-shrink-0';
+            const sizeSpan = document.createElement('span');
+            sizeSpan.className = 'text-xs text-gray-400';
+            sizeSpan.textContent = formatBytes(file.size);
+            const removeBtn = document.createElement('button');
+            removeBtn.dataset.index = index;
+            removeBtn.className = 'remove-file-btn p-1 text-gray-400 hover:text-red-400 transition-colors';
+            const trashIconContainer = document.createElement('div');
+            trashIconContainer.className = 'icon-container w-5 h-5';
+            trashIconContainer.appendChild(iconTrash.cloneNode(true));
+            removeBtn.appendChild(trashIconContainer);
+            rightSection.appendChild(sizeSpan);
+            rightSection.appendChild(removeBtn);
+
+            fileElement.appendChild(leftSection);
+            fileElement.appendChild(rightSection);
             fileListEl.appendChild(fileElement);
         });
     };
@@ -350,7 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             if (ext === 'zip') {
                 await extractZip(file);
-            } else if (ext === '7z' || ext === 'rar') {
+            } else if (ext === '7z') {
                 await extractWithLibArchive(file);
             }
         } catch (e) {
@@ -444,13 +482,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const extractWithLibArchive = async (file, archivePassword) => {
-        if (!Archive) {
-            throw new Error('libarchive.js is not loaded correctly.');
-        }
+        statusText.textContent = 'Loading extraction library...';
+        const LibArchive = await loadLibArchive();
 
         let archive;
         try {
-            archive = await Archive.open(file);
+            statusText.textContent = `Opening ${file.name}...`;
+            archive = await LibArchive.open(file);
 
             const hasEncrypted = await archive.hasEncryptedData();
             if (hasEncrypted && !archivePassword) {
@@ -467,6 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 await archive.usePassword(archivePassword);
             }
 
+            statusText.textContent = `Extracting files from ${file.name}...`;
             let entries;
             try {
                 entries = await archive.extractFiles();
@@ -509,21 +548,39 @@ document.addEventListener('DOMContentLoaded', () => {
         extractedFilesContainer.classList.remove('hidden');
         extractedFileList.innerHTML = '';
 
+        if (extractedFiles.length === 0) {
+            extractedFileList.innerHTML = '<p class="text-gray-400 text-sm italic">No files found in the archive.</p>';
+            return;
+        }
+
         extractedFiles.forEach(file => {
             const url = URL.createObjectURL(file.blob);
             const fileEl = document.createElement('div');
             fileEl.className = 'flex items-center justify-between bg-gray-700/50 p-3 rounded-lg animate-fade-in';
-            fileEl.innerHTML = `
-                <div class="flex items-center gap-3 overflow-hidden">
-                    <div class="icon-container w-5 h-5 text-gray-400 flex-shrink-0"></div>
-                    <span class="truncate text-sm" title="${file.name}">${file.name}</span>
-                </div>
-                <a href="${url}" download="${file.name.split('/').pop()}" class="p-2 text-blue-400 hover:text-blue-300 transition-colors">
-                    <div class="download-icon-container w-5 h-5"></div>
-                </a>
-            `;
-            fileEl.querySelector('.icon-container').appendChild(iconFile.cloneNode(true));
-            fileEl.querySelector('.download-icon-container').appendChild(iconDownload.cloneNode(true));
+
+            const leftSection = document.createElement('div');
+            leftSection.className = 'flex items-center gap-3 overflow-hidden';
+            const iconContainer = document.createElement('div');
+            iconContainer.className = 'icon-container w-5 h-5 text-gray-400 flex-shrink-0';
+            iconContainer.appendChild(iconFile.cloneNode(true));
+            const fileNameSpan = document.createElement('span');
+            fileNameSpan.className = 'truncate text-sm';
+            fileNameSpan.textContent = file.name;
+            fileNameSpan.title = file.name;
+            leftSection.appendChild(iconContainer);
+            leftSection.appendChild(fileNameSpan);
+
+            const downloadLinkEl = document.createElement('a');
+            downloadLinkEl.href = url;
+            downloadLinkEl.download = file.name.split('/').pop();
+            downloadLinkEl.className = 'p-2 text-blue-400 hover:text-blue-300 transition-colors';
+            const downloadIconContainer = document.createElement('div');
+            downloadIconContainer.className = 'download-icon-container w-5 h-5';
+            downloadIconContainer.appendChild(iconDownload.cloneNode(true));
+            downloadLinkEl.appendChild(downloadIconContainer);
+
+            fileEl.appendChild(leftSection);
+            fileEl.appendChild(downloadLinkEl);
             extractedFileList.appendChild(fileEl);
         });
     };
