@@ -4,43 +4,29 @@ document.addEventListener('DOMContentLoaded', () => {
      * @type {object}
      */
     const zip = window.zip;
+    const Archive = window.Archive;
 
     // --- STATE ---
-    /**
-     * An array of files to be zipped.
-     * @type {File[]}
-     */
+    let appMode = 'compress'; // 'compress' or 'extract'
     let files = [];
-    /**
-     * The total size of all files in bytes.
-     * @type {number}
-     */
     let totalSize = 0;
-    /**
-     * The password to use for encryption.
-     * @type {string}
-     */
     let password = '';
-    /**
-     * The compression level to use.
-     * @type {number}
-     */
     let compressionLevel = 5;
-    /**
-     * An object representing the password validation state.
-     * @type {{minLength: boolean, hasNumber: boolean, hasSpecialChar: boolean, hasUpperCase: boolean}}
-     */
     let passwordValidation = {
         minLength: false,
         hasNumber: false,
         hasSpecialChar: false,
         hasUpperCase: false,
     };
+    let currentlyExtractedFiles = [];
     
     // --- DOM ELEMENTS ---
+    const tabCompress = document.getElementById('tab-compress');
+    const tabExtract = document.getElementById('tab-extract');
+
     const setupView = document.getElementById('setup-view');
     const processingView = document.getElementById('processing-view');
-    const downloadView = document.getElementById('download-view');
+    const successView = document.getElementById('success-view');
 
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
@@ -48,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileListHeader = document.getElementById('file-list-header');
     const fileListEl = document.getElementById('file-list');
     
+    const compressOptions = document.getElementById('compress-options');
     const passwordInput = document.getElementById('password-input');
     const togglePasswordBtn = document.getElementById('toggle-password-btn');
     const eyeOpenIcon = document.getElementById('eye-open-icon');
@@ -57,29 +44,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const compressionSlider = document.getElementById('compression-slider');
     const compressionLevelValue = document.getElementById('compression-level-value');
     
-    const createZipBtn = document.getElementById('create-zip-btn');
+    const actionBtn = document.getElementById('action-btn');
+    const actionIcon = document.getElementById('action-icon');
+    const actionText = document.getElementById('action-text');
     const errorMessageEl = document.getElementById('error-message');
     
     const progressBar = document.getElementById('progress-bar');
     const statusText = document.getElementById('status-text');
 
-    const downloadHeader = document.getElementById('download-header');
+    const successHeader = document.getElementById('success-header');
+    const downloadActions = document.getElementById('download-actions');
     const downloadLink = document.getElementById('download-link');
+    const extractedFilesContainer = document.getElementById('extracted-files-container');
+    const extractedFileList = document.getElementById('extracted-file-list');
     const resetBtn = document.getElementById('reset-btn');
+
+    // Password Modal
+    const passwordModal = document.getElementById('password-modal');
+    const modalPasswordInput = document.getElementById('modal-password-input');
+    const modalCancelBtn = document.getElementById('modal-cancel-btn');
+    const modalUnlockBtn = document.getElementById('modal-unlock-btn');
+    const modalErrorMessage = document.getElementById('modal-error-message');
 
     // --- ICONS ---
     const iconCheck = document.getElementById('icon-check').cloneNode(true);
     const iconClose = document.getElementById('icon-close').cloneNode(true);
     const iconFile = document.getElementById('icon-file').cloneNode(true);
     const iconTrash = document.getElementById('icon-trash').cloneNode(true);
+    const iconDownload = document.getElementById('icon-download').cloneNode(true);
 
     // --- HELPERS ---
-    /**
-     * Formats a number of bytes into a human-readable string.
-     * @param {number} bytes The number of bytes to format.
-     * @param {number} [decimals=2] The number of decimal places to use.
-     * @returns {string} The formatted string.
-     */
     const formatBytes = (bytes, decimals = 2) => {
         if (bytes === 0) return '0 Bytes';
         const k = 1024;
@@ -89,10 +83,33 @@ document.addEventListener('DOMContentLoaded', () => {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     };
 
+    const isArchive = (filename) => {
+        const ext = filename.split('.').pop().toLowerCase();
+        return ['zip', '7z', 'rar'].includes(ext);
+    };
+
     // --- UI UPDATE FUNCTIONS ---
-    /**
-     * Renders the list of selected files.
-     */
+    const updateModeUI = () => {
+        if (appMode === 'compress') {
+            tabCompress.classList.add('bg-blue-600', 'text-white', 'shadow-lg');
+            tabCompress.classList.remove('text-gray-400');
+            tabExtract.classList.remove('bg-blue-600', 'text-white', 'shadow-lg');
+            tabExtract.classList.add('text-gray-400');
+            compressOptions.classList.remove('hidden');
+            actionText.textContent = 'Create Secure Zip';
+            fileInput.multiple = true;
+        } else {
+            tabExtract.classList.add('bg-blue-600', 'text-white', 'shadow-lg');
+            tabExtract.classList.remove('text-gray-400');
+            tabCompress.classList.remove('bg-blue-600', 'text-white', 'shadow-lg');
+            tabCompress.classList.add('text-gray-400');
+            compressOptions.classList.add('hidden');
+            actionText.textContent = 'Extract Archive';
+            fileInput.multiple = false;
+        }
+        resetApp();
+    };
+
     const renderFileList = () => {
         fileListEl.innerHTML = '';
         if (files.length === 0) {
@@ -125,10 +142,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    /**
-     * Updates the password validation UI.
-     */
     const updatePasswordValidationUI = () => {
+        if (appMode === 'extract') return;
         if (password.length > 0) {
             passwordRequirementsEl.classList.remove('hidden');
             passwordRequirementsEl.classList.add('grid');
@@ -139,8 +154,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (const requirement in passwordValidation) {
             const li = passwordRequirementsEl.querySelector(`[data-req="${requirement}"]`);
+            if (!li) continue;
             const met = passwordValidation[requirement];
-            li.innerHTML = ''; // Clear previous icon
+            li.innerHTML = '';
             li.appendChild(met ? iconCheck.cloneNode(true) : iconClose.cloneNode(true));
             const span = document.createElement('span');
             span.textContent = {
@@ -154,64 +170,63 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    /**
-     * Updates the state of the create button.
-     */
     const updateCreateButtonState = () => {
-        const isPasswordSet = password.length > 0;
-        const isPasswordValid = Object.values(passwordValidation).every(Boolean);
-        createZipBtn.disabled = files.length === 0 || (isPasswordSet && !isPasswordValid);
+        if (appMode === 'compress') {
+            const isPasswordSet = password.length > 0;
+            const isPasswordValid = Object.values(passwordValidation).every(Boolean);
+            actionBtn.disabled = files.length === 0 || (isPasswordSet && !isPasswordValid);
+        } else {
+            actionBtn.disabled = files.length === 0;
+        }
     };
 
     // --- EVENT HANDLERS ---
-    /**
-     * Handles the selection of files.
-     * @param {FileList|null} selectedFiles The selected files.
-     */
+    tabCompress.addEventListener('click', () => {
+        appMode = 'compress';
+        updateModeUI();
+    });
+    tabExtract.addEventListener('click', () => {
+        appMode = 'extract';
+        updateModeUI();
+    });
+
     const handleFileSelection = (selectedFiles) => {
-        if (!selectedFiles) return;
-        files.push(...Array.from(selectedFiles));
+        if (!selectedFiles || selectedFiles.length === 0) return;
+
+        if (appMode === 'extract') {
+            const file = selectedFiles[0];
+            if (isArchive(file.name)) {
+                files = [file];
+            } else {
+                errorMessageEl.textContent = 'Please select a valid archive file (.zip, .7z, .rar)';
+                return;
+            }
+        } else {
+            files.push(...Array.from(selectedFiles));
+        }
+
         renderFileList();
         updateCreateButtonState();
     };
     
-    /**
-     * Handles the dragover event on the drop zone.
-     * @param {DragEvent} e The drag event.
-     */
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.stopPropagation();
         dropZone.classList.add('border-blue-500');
     });
-    /**
-     * Handles the dragleave event on the drop zone.
-     * @param {DragEvent} e The drag event.
-     */
     dropZone.addEventListener('dragleave', (e) => {
         e.preventDefault();
         e.stopPropagation();
         dropZone.classList.remove('border-blue-500');
     });
-    /**
-     * Handles the drop event on the drop zone.
-     * @param {DragEvent} e The drag event.
-     */
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
         dropZone.classList.remove('border-blue-500');
         handleFileSelection(e.dataTransfer ? e.dataTransfer.files : null);
     });
-    /**
-     * Handles the change event on the file input.
-     */
     fileInput.addEventListener('change', () => handleFileSelection(fileInput.files));
 
-    /**
-     * Handles click events on the file list.
-     * @param {MouseEvent} e The mouse event.
-     */
     fileListEl.addEventListener('click', (e) => {
         const removeBtn = e.target.closest('.remove-file-btn');
         if (removeBtn) {
@@ -222,10 +237,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    /**
-     * Handles input events on the password input.
-     * @param {InputEvent} e The input event.
-     */
     passwordInput.addEventListener('input', (e) => {
         password = e.target.value;
         passwordValidation.minLength = password.length >= 12;
@@ -236,9 +247,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateCreateButtonState();
     });
 
-    /**
-     * Handles click events on the toggle password button.
-     */
     togglePasswordBtn.addEventListener('click', () => {
         const isPassword = passwordInput.type === 'password';
         passwordInput.type = isPassword ? 'text' : 'password';
@@ -247,19 +255,20 @@ document.addEventListener('DOMContentLoaded', () => {
         togglePasswordBtn.title = isPassword ? 'Hide password' : 'Show password';
     });
 
-    /**
-     * Handles input events on the compression slider.
-     * @param {InputEvent} e The input event.
-     */
     compressionSlider.addEventListener('input', (e) => {
         compressionLevel = parseInt(e.target.value, 10);
         compressionLevelValue.textContent = String(compressionLevel);
     });
 
-    /**
-     * Handles click events on the create zip button.
-     */
-    createZipBtn.addEventListener('click', async () => {
+    actionBtn.addEventListener('click', async () => {
+        if (appMode === 'compress') {
+            handleCompress();
+        } else {
+            handleExtract();
+        }
+    });
+
+    const handleCompress = async () => {
         errorMessageEl.textContent = '';
         const isPasswordSet = password.length > 0;
         const isPasswordValid = Object.values(passwordValidation).every(Boolean);
@@ -307,21 +316,200 @@ document.addEventListener('DOMContentLoaded', () => {
             const url = URL.createObjectURL(zipBlob);
             
             processingView.classList.add('hidden');
-            downloadView.classList.remove('hidden');
-            downloadHeader.textContent = 'Your secure zip is ready!';
+            successView.classList.remove('hidden');
+            successHeader.textContent = 'Your secure zip is ready!';
+            downloadLink.classList.remove('hidden');
             downloadLink.href = url;
             downloadLink.download = `secure-archive-${new Date().toISOString().slice(0,10)}.zip`;
+            extractedFilesContainer.classList.add('hidden');
 
         } catch (e) {
             resetApp();
             errorMessageEl.textContent = `An error occurred: ${e.message}`;
             console.error(e);
         }
-    });
+    };
 
-    /**
-     * Resets the application to its initial state.
-     */
+    const handleExtract = async () => {
+        errorMessageEl.textContent = '';
+        if (files.length === 0) return;
+        const file = files[0];
+        const ext = file.name.split('.').pop().toLowerCase();
+
+        setupView.classList.add('hidden');
+        processingView.classList.remove('hidden');
+        statusText.textContent = `Preparing to extract ${file.name}...`;
+        progressBar.style.width = '0%';
+
+        try {
+            if (ext === 'zip') {
+                await extractZip(file);
+            } else if (ext === '7z' || ext === 'rar') {
+                await extractWithLibArchive(file);
+            }
+        } catch (e) {
+            resetApp();
+            errorMessageEl.textContent = `Extraction failed: ${e.message}`;
+            console.error(e);
+        }
+    };
+
+    const promptForPassword = (isRetry = false) => {
+        return new Promise((resolve) => {
+            passwordModal.classList.remove('hidden');
+            modalPasswordInput.value = '';
+            if (isRetry) {
+                modalErrorMessage.classList.remove('hidden');
+            } else {
+                modalErrorMessage.classList.add('hidden');
+            }
+            modalPasswordInput.focus();
+
+            const handleUnlock = () => {
+                const pass = modalPasswordInput.value;
+                if (pass) {
+                    passwordModal.classList.add('hidden');
+                    cleanup();
+                    resolve(pass);
+                }
+            };
+
+            const handleCancel = () => {
+                passwordModal.classList.add('hidden');
+                cleanup();
+                resolve(null);
+            };
+
+            const handleKeyPress = (e) => {
+                if (e.key === 'Enter') handleUnlock();
+            };
+
+            const cleanup = () => {
+                modalUnlockBtn.removeEventListener('click', handleUnlock);
+                modalCancelBtn.removeEventListener('click', handleCancel);
+                modalPasswordInput.removeEventListener('keypress', handleKeyPress);
+            };
+
+            modalUnlockBtn.addEventListener('click', handleUnlock);
+            modalCancelBtn.addEventListener('click', handleCancel);
+            modalPasswordInput.addEventListener('keypress', handleKeyPress);
+        });
+    };
+
+    const extractZip = async (file, zipPassword) => {
+        let zipReader;
+        try {
+            zipReader = new zip.ZipReader(new zip.BlobReader(file), { password: zipPassword });
+            const entries = await zipReader.getEntries();
+            const extractedFiles = [];
+
+            let entriesProcessed = 0;
+            for (const entry of entries) {
+                if (!entry.directory) {
+                    statusText.textContent = `Extracting ${entry.filename}...`;
+                    try {
+                        const blob = await entry.getData(new zip.BlobWriter(), {
+                            onprogress: (current, total) => {
+                                const progress = ((entriesProcessed + (current / total)) / entries.length) * 100;
+                                progressBar.style.width = `${progress}%`;
+                            }
+                        });
+                        extractedFiles.push({ name: entry.filename, blob });
+                    } catch (e) {
+                        if (e.message === zip.ERR_ENCRYPTED || e.message === zip.ERR_INVALID_PASSWORD) {
+                            await zipReader.close();
+                            const newPassword = await promptForPassword(!!zipPassword);
+                            if (newPassword === null) throw new Error('Extraction cancelled.');
+                            return extractZip(file, newPassword);
+                        }
+                        throw e;
+                    }
+                }
+                entriesProcessed++;
+            }
+
+            await zipReader.close();
+            displayExtractedFiles(extractedFiles);
+
+        } catch (e) {
+            if (zipReader) await zipReader.close();
+            throw e;
+        }
+    };
+
+    const extractWithLibArchive = async (file, archivePassword) => {
+        if (!Archive) {
+            throw new Error('libarchive.js is not loaded correctly.');
+        }
+
+        try {
+            Archive.init({
+                workerUrl: 'https://unpkg.com/libarchive.js@2.1.0/dist/worker-bundle.js'
+            });
+
+            const archive = await Archive.open(file);
+            if (archivePassword) {
+                await archive.usePassword(archivePassword);
+            }
+
+            let entries;
+            try {
+                entries = await archive.extractFiles();
+            } catch (e) {
+                // libarchive.js might throw if password is required or incorrect
+                const newPassword = await promptForPassword(!!archivePassword);
+                if (newPassword === null) throw new Error('Extraction cancelled.');
+                return extractWithLibArchive(file, newPassword);
+            }
+
+            const extractedFiles = [];
+            const flattenEntries = (obj, path = '') => {
+                for (const [name, value] of Object.entries(obj)) {
+                    const currentPath = path ? `${path}/${name}` : name;
+                    if (value instanceof File) {
+                        extractedFiles.push({ name: currentPath, blob: value });
+                    } else {
+                        flattenEntries(value, currentPath);
+                    }
+                }
+            };
+
+            flattenEntries(entries);
+            displayExtractedFiles(extractedFiles);
+
+        } catch (e) {
+            throw e;
+        }
+    };
+
+    const displayExtractedFiles = (extractedFiles) => {
+        currentlyExtractedFiles = extractedFiles;
+        processingView.classList.add('hidden');
+        successView.classList.remove('hidden');
+        successHeader.textContent = 'Extraction complete!';
+        downloadLink.classList.add('hidden');
+        extractedFilesContainer.classList.remove('hidden');
+        extractedFileList.innerHTML = '';
+
+        extractedFiles.forEach(file => {
+            const url = URL.createObjectURL(file.blob);
+            const fileEl = document.createElement('div');
+            fileEl.className = 'flex items-center justify-between bg-gray-700/50 p-3 rounded-lg animate-fade-in';
+            fileEl.innerHTML = `
+                <div class="flex items-center gap-3 overflow-hidden">
+                    <div class="icon-container w-5 h-5 text-gray-400 flex-shrink-0"></div>
+                    <span class="truncate text-sm" title="${file.name}">${file.name}</span>
+                </div>
+                <a href="${url}" download="${file.name.split('/').pop()}" class="p-2 text-blue-400 hover:text-blue-300 transition-colors">
+                    <div class="download-icon-container w-5 h-5"></div>
+                </a>
+            `;
+            fileEl.querySelector('.icon-container').appendChild(iconFile.cloneNode(true));
+            fileEl.querySelector('.download-icon-container').appendChild(iconDownload.cloneNode(true));
+            extractedFileList.appendChild(fileEl);
+        });
+    };
+
     const resetApp = () => {
         files = [];
         totalSize = 0;
@@ -335,6 +523,14 @@ document.addEventListener('DOMContentLoaded', () => {
             URL.revokeObjectURL(downloadLink.href);
         }
 
+        // Clean up object URLs from extracted files
+        extractedFileList.querySelectorAll('a').forEach(a => {
+            if (a.href.startsWith('blob:')) {
+                URL.revokeObjectURL(a.href);
+            }
+        });
+        currentlyExtractedFiles = [];
+
         renderFileList();
         updatePasswordValidationUI();
         updateCreateButtonState();
@@ -345,7 +541,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setupView.classList.remove('hidden');
         processingView.classList.add('hidden');
-        downloadView.classList.add('hidden');
+        successView.classList.add('hidden');
+        extractedFilesContainer.classList.add('hidden');
     };
 
     resetBtn.addEventListener('click', resetApp);
