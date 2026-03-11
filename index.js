@@ -444,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             Archive.init({
-                workerUrl: 'https://unpkg.com/libarchive.js@2.1.0/dist/worker-bundle.js'
+                workerUrl: 'https://unpkg.com/libarchive.js@1.3.0/dist/worker-bundle.js'
             });
 
             const archive = await Archive.open(file);
