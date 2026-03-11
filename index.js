@@ -1,16 +1,9 @@
-import { Archive } from 'libarchive.js';
-import workerUrl from 'libarchive.js/dist/worker-bundle.js?worker&url';
-
-Archive.init({
-    workerUrl
-});
-
 document.addEventListener('DOMContentLoaded', () => {
     /**
-     * The zip object is loaded from an external script and will be available on the window.
-     * @type {object}
+     * The zip and Archive objects are loaded from external scripts and will be available on the window.
      */
     const zip = window.zip;
+    const Archive = window.Archive;
 
     // --- STATE ---
     let appMode = 'compress'; // 'compress' or 'extract'
@@ -448,34 +441,23 @@ document.addEventListener('DOMContentLoaded', () => {
             throw new Error('libarchive.js is not loaded correctly.');
         }
 
-        let archive;
         try {
-            statusText.textContent = `Opening ${file.name}...`;
-            archive = await Archive.open(file);
+            Archive.init({
+                workerUrl: 'https://unpkg.com/libarchive.js@1.3.0/dist/worker-bundle.js'
+            });
 
-            const hasEncrypted = await archive.hasEncryptedData();
-            if (hasEncrypted && !archivePassword) {
-                const newPassword = await promptForPassword();
-                if (newPassword === null) {
-                    await archive.close();
-                    throw new Error('Extraction cancelled.');
-                }
-                await archive.close();
-                return extractWithLibArchive(file, newPassword);
-            }
-
+            const archive = await Archive.open(file);
             if (archivePassword) {
                 await archive.usePassword(archivePassword);
             }
 
-            statusText.textContent = `Extracting files from ${file.name}...`;
             let entries;
             try {
+                // v1.3.0 doesn't have hasEncryptedData, so we try to extract and catch errors
                 entries = await archive.extractFiles();
             } catch (e) {
                 console.error("libarchivejs error during extraction:", e);
-                await archive.close();
-                const newPassword = await promptForPassword(true);
+                const newPassword = await promptForPassword(!!archivePassword);
                 if (newPassword === null) throw new Error('Extraction cancelled.');
                 return extractWithLibArchive(file, newPassword);
             }
@@ -493,11 +475,9 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             flattenEntries(entries);
-            await archive.close();
             displayExtractedFiles(extractedFiles);
 
         } catch (e) {
-            if (archive) await archive.close();
             throw e;
         }
     };
@@ -510,11 +490,6 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadLink.classList.add('hidden');
         extractedFilesContainer.classList.remove('hidden');
         extractedFileList.innerHTML = '';
-
-        if (extractedFiles.length === 0) {
-            extractedFileList.innerHTML = '<p class="text-gray-400 text-sm italic">No files found in the archive.</p>';
-            return;
-        }
 
         extractedFiles.forEach(file => {
             const url = URL.createObjectURL(file.blob);
