@@ -1,4 +1,9 @@
-import { Archive } from 'https://unpkg.com/libarchive.js@2.0.2/dist/libarchive.js';
+import { Archive } from 'libarchive.js';
+import workerUrl from 'libarchive.js/dist/worker-bundle.js?worker&url';
+
+Archive.init({
+    workerUrl
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     /**
@@ -445,10 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let archive;
         try {
-            Archive.init({
-                workerUrl: 'https://unpkg.com/libarchive.js@2.0.2/dist/worker-bundle.js'
-            });
-
+            statusText.textContent = `Opening ${file.name}...`;
             archive = await Archive.open(file);
 
             const hasEncrypted = await archive.hasEncryptedData();
@@ -466,6 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 await archive.usePassword(archivePassword);
             }
 
+            statusText.textContent = `Extracting files from ${file.name}...`;
             let entries;
             try {
                 entries = await archive.extractFiles();
@@ -483,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const currentPath = path ? `${path}/${name}` : name;
                     if (value instanceof File) {
                         extractedFiles.push({ name: currentPath, blob: value });
-                    } else {
+                    } else if (typeof value === 'object' && value !== null) {
                         flattenEntries(value, currentPath);
                     }
                 }
@@ -507,6 +510,11 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadLink.classList.add('hidden');
         extractedFilesContainer.classList.remove('hidden');
         extractedFileList.innerHTML = '';
+
+        if (extractedFiles.length === 0) {
+            extractedFileList.innerHTML = '<p class="text-gray-400 text-sm italic">No files found in the archive.</p>';
+            return;
+        }
 
         extractedFiles.forEach(file => {
             const url = URL.createObjectURL(file.blob);
