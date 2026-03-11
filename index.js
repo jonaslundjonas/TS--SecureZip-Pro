@@ -91,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const isArchive = (filename) => {
         const ext = filename.split('.').pop().toLowerCase();
-        return ['zip', '7z', 'rar'].includes(ext);
+        return ['zip', '7z'].includes(ext);
     };
 
     // --- UI UPDATE FUNCTIONS ---
@@ -204,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isArchive(file.name)) {
                 files = [file];
             } else {
-                errorMessageEl.textContent = 'Please select a valid archive file (.zip, .7z, .rar)';
+                errorMessageEl.textContent = 'Please select a valid archive file (.zip, .7z)';
                 return;
             }
         } else {
