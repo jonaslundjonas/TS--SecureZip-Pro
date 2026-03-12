@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let libArchivePromise = null;
 
     /**
-     * Dynamically loads libarchive.js
+     * Dynamically loads libarchive.js and initializes it.
      */
     const loadLibArchive = async () => {
         if (libArchivePromise) return libArchivePromise;
@@ -17,18 +17,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 const module = await import('./vendor/libarchive/libarchive.js');
                 const Archive = module.Archive;
 
-                const workerUrl = './vendor/libarchive/worker-bundle.js';
+                // Pre-compute the absolute URL for the worker bundle
+                const workerUrl = new URL('./vendor/libarchive/worker-bundle.js', import.meta.url).href;
+
                 Archive.init({
                     workerUrl: workerUrl,
-                    getWorker: () => {
-                        // Use a Blob bridge to ensure the worker is loaded as a classic worker
-                        // to support importScripts within the libarchive worker.
-                        const script = `importScripts('${new URL(workerUrl, import.meta.url).href}');`;
+                    getWorker: function() {
+                        /**
+                         * Use a Blob bridge to ensure the worker is loaded as a classic worker.
+                         * This is required because libarchive's worker uses `importScripts`,
+                         * which is not supported in module workers in many browsers.
+                         */
+                        const script = `importScripts('${workerUrl}');`;
                         const blob = new Blob([script], { type: 'application/javascript' });
-                        return new Worker(URL.createObjectURL(blob));
+                        const blobUrl = URL.createObjectURL(blob);
+                        return new Worker(blobUrl);
                     }
                 });
-                console.log('libarchive.js loaded successfully from vendor');
+
+                console.log('libarchive.js loaded and initialized successfully');
                 return Archive;
             } catch (e) {
                 console.error('Failed to load libarchive.js:', e);
@@ -40,8 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return libArchivePromise;
     };
 
-    // Pre-load libarchive.js
-    loadLibArchive().catch(e => console.warn('Delayed libarchive loading:', e));
+    // Pre-load libarchive.js to have it ready
+    loadLibArchive().catch(e => console.warn('Early libarchive loading failed:', e));
 
     // --- STATE ---
     let appMode = 'compress'; // 'compress' or 'extract'
@@ -507,8 +514,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 await archive.usePassword(archivePassword);
             }
 
-            // 1. Try to read archive metadata.
-            // This is the most reliable way to check if headers are accessible.
+            /**
+             * Step 1: Probe for encrypted headers.
+             * Reading metadata (getFilesArray) will fail if headers are encrypted and password is missing/wrong.
+             */
             let filesArray = [];
             try {
                 filesArray = await archive.getFilesArray();
@@ -520,10 +529,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 return extractWithLibArchive(file, newPassword);
             }
 
-            // 2. Check for encryption status of the entries.
+            /**
+             * Step 2: Check if content entries are encrypted.
+             * This handles archives with unencrypted headers but encrypted file data.
+             */
             const hasEncrypted = await archive.hasEncryptedData();
 
-            // If we don't have a password yet and the archive reports it's encrypted (or we can't tell), prompt for one.
+            // If we don't have a password yet and the archive is flagged as encrypted (or null/unknown), prompt for one.
             if (!archivePassword && hasEncrypted !== false) {
                 await archive.close();
                 const newPassword = await promptForPassword(false);
@@ -531,7 +543,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return extractWithLibArchive(file, newPassword);
             }
 
-            // 3. Perform the actual extraction.
+            /**
+             * Step 3: Perform extraction.
+             */
             statusText.textContent = `Extracting files from ${file.name}...`;
             let entries;
             try {
@@ -559,8 +573,11 @@ document.addEventListener('DOMContentLoaded', () => {
             flattenEntries(entries);
             await archive.close();
 
-            // 4. Fallback for successful but empty extraction of encrypted archives.
-            // Some archives might not throw but return nothing if the password is wrong.
+            /**
+             * Step 4: Final verification.
+             * If extraction yielded zero files but metadata suggested there should be some,
+             * and we had an encryption flag, the password was likely incorrect.
+             */
             if (extractedFiles.length === 0 && archivePassword && (hasEncrypted !== false || filesArray.length > 0)) {
                 const newPassword = await promptForPassword(true);
                 if (newPassword === null) throw new Error('Extraction cancelled.');
