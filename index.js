@@ -18,7 +18,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const Archive = module.Archive;
 
                 Archive.init({
-                    workerUrl: './vendor/libarchive/worker-bundle.js'
+                    workerUrl: './vendor/libarchive/worker-bundle.js',
+                    getWorker: (options) => {
+                        // Use a Blob bridge to ensure the worker is loaded as a classic worker
+                        // to support importScripts within the libarchive worker.
+                        const script = `importScripts('${new URL(options.workerUrl, import.meta.url).href}');`;
+                        const blob = new Blob([script], { type: 'application/javascript' });
+                        return new Worker(URL.createObjectURL(blob));
+                    }
                 });
                 console.log('libarchive.js loaded successfully from vendor');
                 return Archive;
@@ -499,18 +506,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 await archive.usePassword(archivePassword);
             }
 
-            const hasEncrypted = await archive.hasEncryptedData();
-            // hasEncrypted can be true, false, or null (null often means encrypted headers or wrong password)
-            if (hasEncrypted === null || (hasEncrypted === true && !archivePassword)) {
-                const newPassword = await promptForPassword(hasEncrypted === null && !!archivePassword);
-                if (newPassword === null) {
-                    await archive.close();
-                    throw new Error('Extraction cancelled.');
-                }
+            // 1. Try to read archive metadata.
+            // This is the most reliable way to check if headers are accessible.
+            let filesArray = [];
+            try {
+                filesArray = await archive.getFilesArray();
+            } catch (e) {
+                console.warn("Could not read archive metadata, likely needs a password:", e);
                 await archive.close();
+                const newPassword = await promptForPassword(!!archivePassword);
+                if (newPassword === null) throw new Error('Extraction cancelled.');
                 return extractWithLibArchive(file, newPassword);
             }
 
+            // 2. Check for encryption status of the entries.
+            const hasEncrypted = await archive.hasEncryptedData();
+
+            // If we don't have a password yet and the archive reports it's encrypted (or we can't tell), prompt for one.
+            if (!archivePassword && hasEncrypted !== false) {
+                await archive.close();
+                const newPassword = await promptForPassword(false);
+                if (newPassword === null) throw new Error('Extraction cancelled.');
+                return extractWithLibArchive(file, newPassword);
+            }
+
+            // 3. Perform the actual extraction.
             statusText.textContent = `Extracting files from ${file.name}...`;
             let entries;
             try {
@@ -538,7 +558,9 @@ document.addEventListener('DOMContentLoaded', () => {
             flattenEntries(entries);
             await archive.close();
 
-            if (extractedFiles.length === 0 && hasEncrypted !== false && archivePassword) {
+            // 4. Fallback for successful but empty extraction of encrypted archives.
+            // Some archives might not throw but return nothing if the password is wrong.
+            if (extractedFiles.length === 0 && archivePassword && (hasEncrypted !== false || filesArray.length > 0)) {
                 const newPassword = await promptForPassword(true);
                 if (newPassword === null) throw new Error('Extraction cancelled.');
                 return extractWithLibArchive(file, newPassword);
@@ -547,7 +569,9 @@ document.addEventListener('DOMContentLoaded', () => {
             displayExtractedFiles(extractedFiles);
 
         } catch (e) {
-            if (archive) await archive.close();
+            if (archive) {
+                try { await archive.close(); } catch (err) {}
+            }
             throw e;
         }
     };
