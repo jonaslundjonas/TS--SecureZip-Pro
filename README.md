@@ -21,7 +21,7 @@ To run this project, you only need a modern web browser.
 
 ### Running the application
 
-Because the application uses ES modules and dynamic imports for library loading, it **must** be served via an HTTP server (to avoid CORS issues with the `file://` protocol).
+Because the application uses ES modules, dynamic imports, and Web Workers, it **must** be served via an HTTP server (to avoid CORS and origin issues with the `file://` protocol).
 
 1.  Clone the repository:
     ```bash

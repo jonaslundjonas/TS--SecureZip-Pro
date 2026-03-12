@@ -14,12 +14,19 @@ document.addEventListener('DOMContentLoaded', () => {
         libArchivePromise = (async () => {
             console.log('Loading libarchive.js...');
             try {
-                const module = await import('./vendor/libarchive/libarchive.js');
+                const module = await import('https://cdn.jsdelivr.net/npm/libarchive.js@2.0.2/dist/libarchive.js');
                 const Archive = module.Archive;
+
+                // Workaround for loading a cross-origin worker on platforms like GitHub Pages
+                const workerUrl = 'https://cdn.jsdelivr.net/npm/libarchive.js@2.0.2/dist/worker-bundle.js';
+                const workerCode = `importScripts("${workerUrl}");`;
+                const blob = new Blob([workerCode], { type: 'text/javascript' });
+                const blobUrl = URL.createObjectURL(blob);
+
                 Archive.init({
-                    workerUrl: './vendor/libarchive/worker-bundle.js'
+                    workerUrl: blobUrl
                 });
-                console.log('libarchive.js loaded successfully');
+                console.log('libarchive.js loaded successfully via jsDelivr');
                 return Archive;
             } catch (e) {
                 console.error('Failed to load libarchive.js:', e);
