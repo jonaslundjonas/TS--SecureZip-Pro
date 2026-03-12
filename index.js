@@ -17,12 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const module = await import('./vendor/libarchive/libarchive.js');
                 const Archive = module.Archive;
 
+                const workerUrl = './vendor/libarchive/worker-bundle.js';
                 Archive.init({
-                    workerUrl: './vendor/libarchive/worker-bundle.js',
-                    getWorker: (options) => {
+                    workerUrl: workerUrl,
+                    getWorker: () => {
                         // Use a Blob bridge to ensure the worker is loaded as a classic worker
                         // to support importScripts within the libarchive worker.
-                        const script = `importScripts('${new URL(options.workerUrl, import.meta.url).href}');`;
+                        const script = `importScripts('${new URL(workerUrl, import.meta.url).href}');`;
                         const blob = new Blob([script], { type: 'application/javascript' });
                         return new Worker(URL.createObjectURL(blob));
                     }
