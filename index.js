@@ -17,14 +17,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const module = await import('https://cdn.jsdelivr.net/npm/libarchive.js@2.0.2/dist/libarchive.js');
                 const Archive = module.Archive;
 
-                // Workaround for loading a cross-origin worker on platforms like GitHub Pages
-                const workerUrl = 'https://cdn.jsdelivr.net/npm/libarchive.js@2.0.2/dist/worker-bundle.js';
-                const workerCode = `importScripts("${workerUrl}");`;
-                const blob = new Blob([workerCode], { type: 'text/javascript' });
-                const blobUrl = URL.createObjectURL(blob);
-
                 Archive.init({
-                    workerUrl: blobUrl
+                    getWorker: () => {
+                        const workerUrl = 'https://cdn.jsdelivr.net/npm/libarchive.js@2.0.2/dist/worker-bundle.js';
+                        const workerCode = `importScripts("${workerUrl}");`;
+                        const blob = new Blob([workerCode], { type: 'text/javascript' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        // We use a classic worker (default) to avoid the "Module scripts don't support importScripts()" error
+                        return new Worker(blobUrl);
+                    }
                 });
                 console.log('libarchive.js loaded successfully via jsDelivr');
                 return Archive;
@@ -96,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Password Modal
     const passwordModal = document.getElementById('password-modal');
+    const modalForm = document.getElementById('modal-form');
     const modalPasswordInput = document.getElementById('modal-password-input');
     const modalCancelBtn = document.getElementById('modal-cancel-btn');
     const modalUnlockBtn = document.getElementById('modal-unlock-btn');
@@ -416,7 +418,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             modalPasswordInput.focus();
 
-            const handleUnlock = () => {
+            const handleUnlock = (e) => {
+                if (e) e.preventDefault();
                 const pass = modalPasswordInput.value;
                 if (pass) {
                     passwordModal.classList.add('hidden');
@@ -437,11 +440,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const cleanup = () => {
                 modalUnlockBtn.removeEventListener('click', handleUnlock);
+                modalForm.removeEventListener('submit', handleUnlock);
                 modalCancelBtn.removeEventListener('click', handleCancel);
                 modalPasswordInput.removeEventListener('keypress', handleKeyPress);
             };
 
             modalUnlockBtn.addEventListener('click', handleUnlock);
+            modalForm.addEventListener('submit', handleUnlock);
             modalCancelBtn.addEventListener('click', handleCancel);
             modalPasswordInput.addEventListener('keypress', handleKeyPress);
         });
