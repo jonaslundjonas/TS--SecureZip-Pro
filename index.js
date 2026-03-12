@@ -14,10 +14,10 @@ document.addEventListener('DOMContentLoaded', () => {
         libArchivePromise = (async () => {
             console.log('Loading libarchive.js...');
             try {
-                const module = await import('https://unpkg.com/libarchive.js@2.0.2/dist/libarchive.js');
+                const module = await import('./vendor/libarchive/libarchive.js');
                 const Archive = module.Archive;
                 Archive.init({
-                    workerUrl: 'https://unpkg.com/libarchive.js@2.0.2/dist/worker-bundle.js'
+                    workerUrl: './vendor/libarchive/worker-bundle.js'
                 });
                 console.log('libarchive.js loaded successfully');
                 return Archive;
