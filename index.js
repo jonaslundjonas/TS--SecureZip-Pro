@@ -14,20 +14,13 @@ document.addEventListener('DOMContentLoaded', () => {
         libArchivePromise = (async () => {
             console.log('Loading libarchive.js...');
             try {
-                const module = await import('https://unpkg.com/libarchive.js@2.0.2/dist/libarchive.js');
+                const module = await import('./vendor/libarchive/libarchive.js');
                 const Archive = module.Archive;
 
                 Archive.init({
-                    getWorker: () => {
-                        const workerUrl = 'https://unpkg.com/libarchive.js@2.0.2/dist/worker-bundle.js';
-                        const workerCode = `importScripts("${workerUrl}");`;
-                        const blob = new Blob([workerCode], { type: 'text/javascript' });
-                        const blobUrl = URL.createObjectURL(blob);
-                        // We use a classic worker (default) to avoid the "Module scripts don't support importScripts()" error
-                        return new Worker(blobUrl);
-                    }
+                    workerUrl: './vendor/libarchive/worker-bundle.js'
                 });
-                console.log('libarchive.js loaded successfully via unpkg');
+                console.log('libarchive.js loaded successfully from vendor');
                 return Archive;
             } catch (e) {
                 console.error('Failed to load libarchive.js:', e);
