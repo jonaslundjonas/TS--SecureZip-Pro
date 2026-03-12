@@ -17,22 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const module = await import('./vendor/libarchive/libarchive.js');
                 const Archive = module.Archive;
 
-                // Pre-compute the absolute URL for the worker bundle
+                // Use an absolute URL for the worker bundle to ensure it's found correctly by Vite/browser.
+                // We load it as a module worker (default behavior in libarchive.js) because
+                // worker-bundle.js contains 'import.meta' which is not allowed in classic workers.
                 const workerUrl = new URL('./vendor/libarchive/worker-bundle.js', import.meta.url).href;
 
                 Archive.init({
-                    workerUrl: workerUrl,
-                    getWorker: function() {
-                        /**
-                         * Use a Blob bridge to ensure the worker is loaded as a classic worker.
-                         * This is required because libarchive's worker uses `importScripts`,
-                         * which is not supported in module workers in many browsers.
-                         */
-                        const script = `importScripts('${workerUrl}');`;
-                        const blob = new Blob([script], { type: 'application/javascript' });
-                        const blobUrl = URL.createObjectURL(blob);
-                        return new Worker(blobUrl);
-                    }
+                    workerUrl: workerUrl
                 });
 
                 console.log('libarchive.js loaded and initialized successfully');
@@ -558,12 +549,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return extractWithLibArchive(file, newPassword);
             }
 
-            const extractedFiles = [];
+            const extractedFilesList = [];
             const flattenEntries = (obj, path = '') => {
                 for (const [name, value] of Object.entries(obj)) {
                     const currentPath = path ? `${path}/${name}` : name;
                     if (value instanceof File) {
-                        extractedFiles.push({ name: currentPath, blob: value });
+                        extractedFilesList.push({ name: currentPath, blob: value });
                     } else if (typeof value === 'object' && value !== null) {
                         flattenEntries(value, currentPath);
                     }
@@ -578,13 +569,13 @@ document.addEventListener('DOMContentLoaded', () => {
              * If extraction yielded zero files but metadata suggested there should be some,
              * and we had an encryption flag, the password was likely incorrect.
              */
-            if (extractedFiles.length === 0 && archivePassword && (hasEncrypted !== false || filesArray.length > 0)) {
+            if (extractedFilesList.length === 0 && archivePassword && (hasEncrypted !== false || filesArray.length > 0)) {
                 const newPassword = await promptForPassword(true);
                 if (newPassword === null) throw new Error('Extraction cancelled.');
                 return extractWithLibArchive(file, newPassword);
             }
 
-            displayExtractedFiles(extractedFiles);
+            displayExtractedFiles(extractedFilesList);
 
         } catch (e) {
             if (archive) {
