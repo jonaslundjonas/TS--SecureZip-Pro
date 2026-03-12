@@ -495,19 +495,20 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.textContent = `Opening ${file.name}...`;
             archive = await LibArchive.open(file);
 
+            if (archivePassword) {
+                await archive.usePassword(archivePassword);
+            }
+
             const hasEncrypted = await archive.hasEncryptedData();
-            if (hasEncrypted && !archivePassword) {
-                const newPassword = await promptForPassword();
+            // hasEncrypted can be true, false, or null (null often means encrypted headers or wrong password)
+            if (hasEncrypted === null || (hasEncrypted === true && !archivePassword)) {
+                const newPassword = await promptForPassword(hasEncrypted === null && !!archivePassword);
                 if (newPassword === null) {
                     await archive.close();
                     throw new Error('Extraction cancelled.');
                 }
                 await archive.close();
                 return extractWithLibArchive(file, newPassword);
-            }
-
-            if (archivePassword) {
-                await archive.usePassword(archivePassword);
             }
 
             statusText.textContent = `Extracting files from ${file.name}...`;
@@ -536,6 +537,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             flattenEntries(entries);
             await archive.close();
+
+            if (extractedFiles.length === 0 && hasEncrypted !== false && archivePassword) {
+                const newPassword = await promptForPassword(true);
+                if (newPassword === null) throw new Error('Extraction cancelled.');
+                return extractWithLibArchive(file, newPassword);
+            }
+
             displayExtractedFiles(extractedFiles);
 
         } catch (e) {
