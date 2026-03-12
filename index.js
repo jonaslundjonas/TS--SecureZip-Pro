@@ -14,12 +14,12 @@ document.addEventListener('DOMContentLoaded', () => {
         libArchivePromise = (async () => {
             console.log('Loading libarchive.js...');
             try {
-                const module = await import('https://cdn.jsdelivr.net/npm/libarchive.js@2.0.2/dist/libarchive.js');
+                const module = await import('https://unpkg.com/libarchive.js@2.0.2/dist/libarchive.js');
                 const Archive = module.Archive;
 
                 Archive.init({
                     getWorker: () => {
-                        const workerUrl = 'https://cdn.jsdelivr.net/npm/libarchive.js@2.0.2/dist/worker-bundle.js';
+                        const workerUrl = 'https://unpkg.com/libarchive.js@2.0.2/dist/worker-bundle.js';
                         const workerCode = `importScripts("${workerUrl}");`;
                         const blob = new Blob([workerCode], { type: 'text/javascript' });
                         const blobUrl = URL.createObjectURL(blob);
@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         return new Worker(blobUrl);
                     }
                 });
-                console.log('libarchive.js loaded successfully via jsDelivr');
+                console.log('libarchive.js loaded successfully via unpkg');
                 return Archive;
             } catch (e) {
                 console.error('Failed to load libarchive.js:', e);
