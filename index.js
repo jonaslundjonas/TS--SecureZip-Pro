@@ -132,16 +132,18 @@ document.addEventListener('DOMContentLoaded', () => {
             tabExtract.classList.remove('bg-blue-600', 'text-white', 'shadow-lg');
             tabExtract.classList.add('text-gray-400');
             compressOptions.classList.remove('hidden');
-            actionText.textContent = 'Create Secure Zip';
+            actionText.textContent = 'Create Secure ZIP';
             fileInput.multiple = true;
+            fileInput.accept = ""; // Allow all files for compression
         } else {
             tabExtract.classList.add('bg-blue-600', 'text-white', 'shadow-lg');
             tabExtract.classList.remove('text-gray-400');
             tabCompress.classList.remove('bg-blue-600', 'text-white', 'shadow-lg');
             tabCompress.classList.add('text-gray-400');
             compressOptions.classList.add('hidden');
-            actionText.textContent = 'Extract Archive';
+            actionText.textContent = 'Extract ZIP / 7z / RAR';
             fileInput.multiple = false;
+            fileInput.accept = ".zip,.7z,.rar"; // Only archives for extraction
         }
         resetApp();
     };
@@ -195,7 +197,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const updatePasswordValidationUI = () => {
-        if (appMode === 'extract') return;
+        if (appMode === 'extract') {
+            passwordRequirementsEl.classList.add('hidden');
+            passwordRequirementsEl.classList.remove('grid');
+            return;
+        }
         if (password.length > 0) {
             passwordRequirementsEl.classList.remove('hidden');
             passwordRequirementsEl.classList.add('grid');
@@ -496,12 +502,16 @@ document.addEventListener('DOMContentLoaded', () => {
         statusText.textContent = 'Loading extraction library...';
         const LibArchive = await loadLibArchive();
 
+        const ext = file.name.split('.').pop().toLowerCase();
+        const isRar = ext === 'rar';
+
         let archive;
         try {
             statusText.textContent = `Opening ${file.name}...`;
             archive = await LibArchive.open(file);
 
             if (archivePassword) {
+                console.log("Applying password to archive...");
                 await archive.usePassword(archivePassword);
             }
 
@@ -513,7 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 filesArray = await archive.getFilesArray();
             } catch (e) {
-                console.warn("Could not read archive metadata, likely needs a password:", e);
+                console.warn("Could not read archive metadata, likely needs a password or incorrect password:", e);
                 await archive.close();
                 const newPassword = await promptForPassword(!!archivePassword);
                 if (newPassword === null) throw new Error('Extraction cancelled.');
@@ -525,6 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
              * This handles archives with unencrypted headers but encrypted file data.
              */
             const hasEncrypted = await archive.hasEncryptedData();
+            console.log("Archive encryption status:", hasEncrypted);
 
             // If we don't have a password yet and the archive is flagged as encrypted (or null/unknown), prompt for one.
             if (!archivePassword && hasEncrypted !== false) {
@@ -544,17 +555,18 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 console.error("libarchivejs error during extraction:", e);
                 await archive.close();
+                // If extraction fails, it might be due to a wrong password (even if headers were readable)
                 const newPassword = await promptForPassword(true);
                 if (newPassword === null) throw new Error('Extraction cancelled.');
                 return extractWithLibArchive(file, newPassword);
             }
 
-            const extractedFilesList = [];
+            const finalExtractedFilesList = [];
             const flattenEntries = (obj, path = '') => {
                 for (const [name, value] of Object.entries(obj)) {
                     const currentPath = path ? `${path}/${name}` : name;
                     if (value instanceof File) {
-                        extractedFilesList.push({ name: currentPath, blob: value });
+                        finalExtractedFilesList.push({ name: currentPath, blob: value });
                     } else if (typeof value === 'object' && value !== null) {
                         flattenEntries(value, currentPath);
                     }
@@ -569,15 +581,21 @@ document.addEventListener('DOMContentLoaded', () => {
              * If extraction yielded zero files but metadata suggested there should be some,
              * and we had an encryption flag, the password was likely incorrect.
              */
-            if (extractedFilesList.length === 0 && archivePassword && (hasEncrypted !== false || filesArray.length > 0)) {
+            if (finalExtractedFilesList.length === 0 && archivePassword && (hasEncrypted !== false || filesArray.length > 0)) {
+                console.warn("Extraction resulted in no files, prompting for password again.");
                 const newPassword = await promptForPassword(true);
                 if (newPassword === null) throw new Error('Extraction cancelled.');
                 return extractWithLibArchive(file, newPassword);
             }
 
-            displayExtractedFiles(extractedFilesList);
+            if (finalExtractedFilesList.length === 0 && isRar) {
+                throw new Error("No files extracted. Note: Only RAR v4 and older are supported. RAR v5 is not currently supported.");
+            }
+
+            displayExtractedFiles(finalExtractedFilesList);
 
         } catch (e) {
+            console.error("Fatal extraction error:", e);
             if (archive) {
                 try { await archive.close(); } catch (err) {}
             }
@@ -669,5 +687,5 @@ document.addEventListener('DOMContentLoaded', () => {
     resetBtn.addEventListener('click', resetApp);
     
     // Initial UI state
-    updatePasswordValidationUI();
+    updateModeUI();
 });
