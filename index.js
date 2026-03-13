@@ -508,7 +508,25 @@ document.addEventListener('DOMContentLoaded', () => {
         let archive;
         try {
             statusText.textContent = `Opening ${file.name}...`;
-            archive = await LibArchive.open(file);
+
+            // Mitigate NotReadableError by reading files into memory if they are not too large.
+            // This ensures the data is definitely available to the worker without permission/stale handle issues.
+            let fileRef;
+            try {
+                if (file.size < 150 * 1024 * 1024) { // 150MB limit for in-memory copy
+                    const buffer = await file.arrayBuffer();
+                    fileRef = new File([buffer], file.name, { type: file.type });
+                    console.log("File loaded into memory for extraction.");
+                } else {
+                    fileRef = file.slice(0, file.size);
+                    console.log("File too large for memory, using slice reference.");
+                }
+            } catch (err) {
+                console.warn("Could not read file into buffer, using slice fallback:", err);
+                fileRef = file.slice(0, file.size);
+            }
+
+            archive = await LibArchive.open(fileRef);
 
             if (archivePassword) {
                 console.log("Applying password to archive...");
@@ -522,6 +540,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let filesArray = [];
             try {
                 filesArray = await archive.getFilesArray();
+                console.log(`Successfully read archive metadata. Entries: ${filesArray.length}`);
             } catch (e) {
                 console.warn("Could not read archive metadata, likely needs a password or incorrect password:", e);
                 await archive.close();
@@ -535,7 +554,7 @@ document.addEventListener('DOMContentLoaded', () => {
              * This handles archives with unencrypted headers but encrypted file data.
              */
             const hasEncrypted = await archive.hasEncryptedData();
-            console.log("Archive encryption status:", hasEncrypted);
+            console.log("Archive encryption status (hasEncryptedData):", hasEncrypted);
 
             // If we don't have a password yet and the archive is flagged as encrypted (or null/unknown), prompt for one.
             if (!archivePassword && hasEncrypted !== false) {
@@ -551,11 +570,13 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.textContent = `Extracting files from ${file.name}...`;
             let entries;
             try {
+                // Re-apply password just before extraction to be absolutely sure worker has it
+                if (archivePassword) await archive.usePassword(archivePassword);
                 entries = await archive.extractFiles();
+                console.log("Extraction completed. Raw entries result:", entries);
             } catch (e) {
                 console.error("libarchivejs error during extraction:", e);
                 await archive.close();
-                // If extraction fails, it might be due to a wrong password (even if headers were readable)
                 const newPassword = await promptForPassword(true);
                 if (newPassword === null) throw new Error('Extraction cancelled.');
                 return extractWithLibArchive(file, newPassword);
@@ -563,9 +584,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const finalExtractedFilesList = [];
             const flattenEntries = (obj, path = '') => {
+                if (!obj) return;
                 for (const [name, value] of Object.entries(obj)) {
                     const currentPath = path ? `${path}/${name}` : name;
-                    if (value instanceof File) {
+                    // Robust check for File/Blob-like objects
+                    if (value instanceof File || value instanceof Blob || (value && typeof value.size === 'number')) {
                         finalExtractedFilesList.push({ name: currentPath, blob: value });
                     } else if (typeof value === 'object' && value !== null) {
                         flattenEntries(value, currentPath);
@@ -574,6 +597,31 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             flattenEntries(entries);
+            console.log(`Flattened files count: ${finalExtractedFilesList.length}`);
+
+            // FALLBACK: If extractFiles returned nothing but metadata showed files, attempt manual extraction per entry.
+            // This works around cases where libarchive's bulk extraction fails on some encrypted 7z/RAR formats.
+            if (finalExtractedFilesList.length === 0 && filesArray.length > 0) {
+                console.log("extractFiles returned nothing, attempting manual entry extraction fallback...");
+                for (const entry of filesArray) {
+                    const entryObj = entry.file;
+                    // Try to resolve path from various possible internal properties
+                    const path = (entryObj && entryObj._path) || entry.path || (entryObj && entryObj.name);
+                    if (!path) continue;
+
+                    try {
+                        statusText.textContent = `Extracting ${path}...`;
+                        const extractedFile = await archive.extractSingleFile(path);
+                        if (extractedFile) {
+                            finalExtractedFilesList.push({ name: path, blob: extractedFile });
+                        }
+                    } catch (err) {
+                        console.warn(`Manual extraction failed for ${path}:`, err);
+                    }
+                }
+                console.log(`Manual extraction finished. Total files: ${finalExtractedFilesList.length}`);
+            }
+
             await archive.close();
 
             /**
