@@ -509,11 +509,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             statusText.textContent = `Opening ${file.name}...`;
 
-            // Mitigate NotReadableError by reading files into memory if they are not too large.
-            // This ensures the data is definitely available to the worker without permission/stale handle issues.
             let fileRef;
             try {
-                if (file.size < 150 * 1024 * 1024) { // 150MB limit for in-memory copy
+                if (file.size < 150 * 1024 * 1024) {
                     const buffer = await file.arrayBuffer();
                     fileRef = new File([buffer], file.name, { type: file.type });
                     console.log("File loaded into memory for extraction.");
@@ -526,7 +524,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 fileRef = file.slice(0, file.size);
             }
 
-            archive = await LibArchive.open(fileRef);
+            // We use the patched open that allows passing a password early.
+            // If the library isn't patched or we don't have a password, this still works.
+            archive = await LibArchive.open(fileRef, archivePassword);
+
+            // Also set locale for better filename support
+            try {
+                await archive.setLocale('en_US.UTF-8');
+            } catch (e) {
+                console.warn("Failed to set locale:", e);
+            }
 
             if (archivePassword) {
                 console.log("Applying password to archive...");
@@ -535,11 +542,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             /**
              * Step 1: Probe for encrypted headers.
-             * Reading metadata (getFilesArray) will fail if headers are encrypted and password is missing/wrong.
              */
             let filesArray = [];
             try {
                 filesArray = await archive.getFilesArray();
+
+                // CRITICAL: If metadata says 0 entries but encryption is detected, headers are definitely encrypted
+                // and the current password (or lack thereof) didn't unlock them.
+                const encryptionStatus = await archive.hasEncryptedData();
+                console.log("Archive encryption status (hasEncryptedData):", encryptionStatus);
+
+                if (filesArray.length === 0 && encryptionStatus !== false) {
+                    throw new Error("Metadata empty but encryption detected - headers likely locked.");
+                }
+
                 console.log(`Successfully read archive metadata. Entries: ${filesArray.length}`);
             } catch (e) {
                 console.warn("Could not read archive metadata, likely needs a password or incorrect password:", e);
@@ -550,13 +566,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             /**
-             * Step 2: Check if content entries are encrypted.
-             * This handles archives with unencrypted headers but encrypted file data.
+             * Step 2: Check for encrypted data if not already prompted.
              */
             const hasEncrypted = await archive.hasEncryptedData();
-            console.log("Archive encryption status (hasEncryptedData):", hasEncrypted);
-
-            // If we don't have a password yet and the archive is flagged as encrypted (or null/unknown), prompt for one.
             if (!archivePassword && hasEncrypted !== false) {
                 await archive.close();
                 const newPassword = await promptForPassword(false);
@@ -570,7 +582,6 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.textContent = `Extracting files from ${file.name}...`;
             let entries;
             try {
-                // Re-apply password just before extraction to be absolutely sure worker has it
                 if (archivePassword) await archive.usePassword(archivePassword);
                 entries = await archive.extractFiles();
                 console.log("Extraction completed. Raw entries result:", entries);
@@ -600,12 +611,10 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Flattened files count: ${finalExtractedFilesList.length}`);
 
             // FALLBACK: If extractFiles returned nothing but metadata showed files, attempt manual extraction per entry.
-            // This works around cases where libarchive's bulk extraction fails on some encrypted 7z/RAR formats.
             if (finalExtractedFilesList.length === 0 && filesArray.length > 0) {
                 console.log("extractFiles returned nothing, attempting manual entry extraction fallback...");
                 for (const entry of filesArray) {
                     const entryObj = entry.file;
-                    // Try to resolve path from various possible internal properties
                     const path = (entryObj && entryObj._path) || entry.path || (entryObj && entryObj.name);
                     if (!path) continue;
 
@@ -626,8 +635,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             /**
              * Step 4: Final verification.
-             * If extraction yielded zero files but metadata suggested there should be some,
-             * and we had an encryption flag, the password was likely incorrect.
              */
             if (finalExtractedFilesList.length === 0 && archivePassword && (hasEncrypted !== false || filesArray.length > 0)) {
                 console.warn("Extraction resulted in no files, prompting for password again.");
