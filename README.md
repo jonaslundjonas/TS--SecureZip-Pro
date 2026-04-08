@@ -1,23 +1,27 @@
-# Secure Zip File Creator
+# SecureZip Pro
 
-This is a simple, client-side web application for creating password-protected zip files. It allows you to select or drag-and-drop multiple files, set a strong password, and choose a compression level before generating a secure zip archive directly in your browser.
+This is a comprehensive, client-side web application for creating and extracting password-protected archives. It allows you to compress files into secure Zip archives or extract files from Zip, 7z, and WinRAR (RAR) formats directly in your browser.
 
 ## Features
 
--   **File Selection:** Drag and drop files or use the file input to select them.
--   **Password Protection:** Encrypt your zip files with a strong password.
--   **Password Strength Indicator:** Real-time feedback on password strength.
--   **Compression Level:** Adjust the compression level to balance file size and speed.
--   **Client-Side Processing:** All processing is done in the browser, ensuring your files are not uploaded to a server.
--   **Modern UI:** A clean and responsive user interface built with Tailwind CSS.
+-   **Compression & Extraction:** Supports both creating Zip archives and extracting Zip, 7z, and RAR files.
+-   **Password Support:**
+    -   Encrypt your Zip files with a strong password.
+    -   Extract password-protected Zip, 7z, and RAR archives.
+-   **Password Strength Indicator:** Real-time feedback on password strength when creating archives.
+-   **Compression Level:** Adjust the compression level for Zip creation to balance file size and speed.
+-   **Client-Side Processing:** All processing is done in the browser using Web Workers, ensuring your files never leave your machine.
+-   **Modern UI:** A clean, responsive, and dark-themed user interface built with Tailwind CSS.
 
 ## Getting Started
 
 ### Prerequisites
 
-To run this project, you only need a modern web browser. There are no other dependencies to install.
+To run this project, you only need a modern web browser.
 
 ### Running the application
+
+Because the application uses ES modules, dynamic imports, and Web Workers, it **must** be served via an HTTP server (to avoid CORS and origin issues with the `file://` protocol).
 
 1.  Clone the repository:
     ```bash
@@ -27,21 +31,24 @@ To run this project, you only need a modern web browser. There are no other depe
     ```bash
     cd your-repo-name
     ```
-3.  Open the `index.html` file in your web browser.
-
-Alternatively, you can use a simple HTTP server to serve the files. If you have Python installed, you can run:
-
-```bash
-python -m http.server
-```
-
-Then, open your browser and navigate to `http://localhost:8000`.
+3.  Serve the directory using a simple HTTP server:
+    -   Using Python: `python -m http.server`
+    -   Using Node.js: `npx http-server .`
+4.  Open your browser and navigate to the address provided (usually `http://localhost:8000` or `http://localhost:8080`).
 
 ## Usage
 
-1.  **Select Files:** Drag and drop your files onto the designated drop zone, or click the "Browse" button to select files from your computer.
-2.  **Set Password (Optional):** If you want to encrypt your zip file, enter a password in the password field. The password strength indicator will help you create a strong password.
-3.  **Choose Compression Level:** Use the slider to select a compression level. A higher level means a smaller file size but may take longer to process.
-4.  **Create Zip:** Click the "Create Zip" button to start the compression and encryption process.
-5.  **Download:** Once the process is complete, a download link will appear. Click it to save your secure zip file.
-6.  **Reset:** To start over, click the "Reset" button.
+### To Compress Files:
+1.  Ensure you are on the **Compress** tab.
+2.  **Select Files:** Drag and drop your files onto the drop zone, or click "browse".
+3.  **Set Password (Optional):** Enter a password to encrypt your Zip file. Follow the strength requirements for a secure archive.
+4.  **Choose Compression Level:** Use the slider to select a compression level.
+5.  **Create Zip:** Click "Create Secure Zip".
+6.  **Download:** Once ready, click "Download Secure Zip".
+
+### To Extract Archives:
+1.  Switch to the **Extract** tab.
+2.  **Select Archive:** Select a `.zip`, `.7z`, or `.rar` file.
+3.  **Extract:** Click "Extract Archive".
+4.  **Password:** If the archive is protected, a modal will appear. Enter the password and click "Unlock".
+5.  **Download Files:** Once extraction is complete, you can download each extracted file individually.
