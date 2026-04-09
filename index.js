@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let libArchivePromise = null;
 
     /**
-     * Dynamically loads libarchive.js
+     * Dynamically loads libarchive.js and initializes it.
      */
     const loadLibArchive = async () => {
         if (libArchivePromise) return libArchivePromise;
@@ -17,10 +17,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const module = await import('./vendor/libarchive/libarchive.js');
                 const Archive = module.Archive;
 
+                // Use an absolute URL for the worker bundle to ensure it's found correctly by Vite/browser.
+                // We load it as a module worker (default behavior in libarchive.js) because
+                // worker-bundle.js contains 'import.meta' which is not allowed in classic workers.
+                const workerUrl = new URL('./vendor/libarchive/worker-bundle.js', import.meta.url).href;
+
                 Archive.init({
-                    workerUrl: './vendor/libarchive/worker-bundle.js'
+                    workerUrl: workerUrl
                 });
-                console.log('libarchive.js loaded successfully from vendor');
+
+                console.log('libarchive.js loaded and initialized successfully');
                 return Archive;
             } catch (e) {
                 console.error('Failed to load libarchive.js:', e);
@@ -32,8 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return libArchivePromise;
     };
 
-    // Pre-load libarchive.js
-    loadLibArchive().catch(e => console.warn('Delayed libarchive loading:', e));
+    // Pre-load libarchive.js to have it ready
+    loadLibArchive().catch(e => console.warn('Early libarchive loading failed:', e));
 
     // --- STATE ---
     let appMode = 'compress'; // 'compress' or 'extract'
@@ -126,16 +132,18 @@ document.addEventListener('DOMContentLoaded', () => {
             tabExtract.classList.remove('bg-blue-600', 'text-white', 'shadow-lg');
             tabExtract.classList.add('text-gray-400');
             compressOptions.classList.remove('hidden');
-            actionText.textContent = 'Create Secure Zip';
+            actionText.textContent = 'Create Secure ZIP';
             fileInput.multiple = true;
+            fileInput.accept = ""; // Allow all files for compression
         } else {
             tabExtract.classList.add('bg-blue-600', 'text-white', 'shadow-lg');
             tabExtract.classList.remove('text-gray-400');
             tabCompress.classList.remove('bg-blue-600', 'text-white', 'shadow-lg');
             tabCompress.classList.add('text-gray-400');
             compressOptions.classList.add('hidden');
-            actionText.textContent = 'Extract Archive';
+            actionText.textContent = 'Extract ZIP / 7z / RAR';
             fileInput.multiple = false;
+            fileInput.accept = ".zip,.7z,.rar"; // Only archives for extraction
         }
         resetApp();
     };
@@ -189,7 +197,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const updatePasswordValidationUI = () => {
-        if (appMode === 'extract') return;
+        if (appMode === 'extract') {
+            passwordRequirementsEl.classList.add('hidden');
+            passwordRequirementsEl.classList.remove('grid');
+            return;
+        }
         if (password.length > 0) {
             passwordRequirementsEl.classList.remove('hidden');
             passwordRequirementsEl.classList.add('grid');
@@ -490,30 +502,89 @@ document.addEventListener('DOMContentLoaded', () => {
         statusText.textContent = 'Loading extraction library...';
         const LibArchive = await loadLibArchive();
 
+        const ext = file.name.split('.').pop().toLowerCase();
+        const isRar = ext === 'rar';
+
         let archive;
         try {
             statusText.textContent = `Opening ${file.name}...`;
-            archive = await LibArchive.open(file);
 
-            const hasEncrypted = await archive.hasEncryptedData();
-            if (hasEncrypted && !archivePassword) {
-                const newPassword = await promptForPassword();
-                if (newPassword === null) {
-                    await archive.close();
-                    throw new Error('Extraction cancelled.');
+            let fileRef;
+            try {
+                if (file.size < 150 * 1024 * 1024) {
+                    const buffer = await file.arrayBuffer();
+                    fileRef = new File([buffer], file.name, { type: file.type });
+                    console.log("File loaded into memory for extraction.");
+                } else {
+                    fileRef = file.slice(0, file.size);
+                    console.log("File too large for memory, using slice reference.");
                 }
-                await archive.close();
-                return extractWithLibArchive(file, newPassword);
+            } catch (err) {
+                console.warn("Could not read file into buffer, using slice fallback:", err);
+                fileRef = file.slice(0, file.size);
+            }
+
+            // We use the patched open that allows passing a password early.
+            // If the library isn't patched or we don't have a password, this still works.
+            archive = await LibArchive.open(fileRef, archivePassword);
+
+            // Also set locale for better filename support
+            try {
+                await archive.setLocale('en_US.UTF-8');
+            } catch (e) {
+                console.warn("Failed to set locale:", e);
             }
 
             if (archivePassword) {
+                console.log("Applying password to archive...");
                 await archive.usePassword(archivePassword);
             }
 
+            /**
+             * Step 1: Probe for encrypted headers.
+             */
+            let filesArray = [];
+            try {
+                filesArray = await archive.getFilesArray();
+
+                // CRITICAL: If metadata says 0 entries but encryption is detected, headers are definitely encrypted
+                // and the current password (or lack thereof) didn't unlock them.
+                const encryptionStatus = await archive.hasEncryptedData();
+                console.log("Archive encryption status (hasEncryptedData):", encryptionStatus);
+
+                if (filesArray.length === 0 && encryptionStatus !== false) {
+                    throw new Error("Metadata empty but encryption detected - headers likely locked.");
+                }
+
+                console.log(`Successfully read archive metadata. Entries: ${filesArray.length}`);
+            } catch (e) {
+                console.warn("Could not read archive metadata, likely needs a password or incorrect password:", e);
+                await archive.close();
+                const newPassword = await promptForPassword(!!archivePassword);
+                if (newPassword === null) throw new Error('Extraction cancelled.');
+                return extractWithLibArchive(file, newPassword);
+            }
+
+            /**
+             * Step 2: Check for encrypted data if not already prompted.
+             */
+            const hasEncrypted = await archive.hasEncryptedData();
+            if (!archivePassword && hasEncrypted !== false) {
+                await archive.close();
+                const newPassword = await promptForPassword(false);
+                if (newPassword === null) throw new Error('Extraction cancelled.');
+                return extractWithLibArchive(file, newPassword);
+            }
+
+            /**
+             * Step 3: Perform extraction.
+             */
             statusText.textContent = `Extracting files from ${file.name}...`;
             let entries;
             try {
+                if (archivePassword) await archive.usePassword(archivePassword);
                 entries = await archive.extractFiles();
+                console.log("Extraction completed. Raw entries result:", entries);
             } catch (e) {
                 console.error("libarchivejs error during extraction:", e);
                 await archive.close();
@@ -522,12 +593,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return extractWithLibArchive(file, newPassword);
             }
 
-            const extractedFiles = [];
+            const finalExtractedFilesList = [];
             const flattenEntries = (obj, path = '') => {
+                if (!obj) return;
                 for (const [name, value] of Object.entries(obj)) {
                     const currentPath = path ? `${path}/${name}` : name;
-                    if (value instanceof File) {
-                        extractedFiles.push({ name: currentPath, blob: value });
+                    // Robust check for File/Blob-like objects
+                    if (value instanceof File || value instanceof Blob || (value && typeof value.size === 'number')) {
+                        finalExtractedFilesList.push({ name: currentPath, blob: value });
                     } else if (typeof value === 'object' && value !== null) {
                         flattenEntries(value, currentPath);
                     }
@@ -535,11 +608,52 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             flattenEntries(entries);
+            console.log(`Flattened files count: ${finalExtractedFilesList.length}`);
+
+            // FALLBACK: If extractFiles returned nothing but metadata showed files, attempt manual extraction per entry.
+            if (finalExtractedFilesList.length === 0 && filesArray.length > 0) {
+                console.log("extractFiles returned nothing, attempting manual entry extraction fallback...");
+                for (const entry of filesArray) {
+                    const entryObj = entry.file;
+                    const path = (entryObj && entryObj._path) || entry.path || (entryObj && entryObj.name);
+                    if (!path) continue;
+
+                    try {
+                        statusText.textContent = `Extracting ${path}...`;
+                        const extractedFile = await archive.extractSingleFile(path);
+                        if (extractedFile) {
+                            finalExtractedFilesList.push({ name: path, blob: extractedFile });
+                        }
+                    } catch (err) {
+                        console.warn(`Manual extraction failed for ${path}:`, err);
+                    }
+                }
+                console.log(`Manual extraction finished. Total files: ${finalExtractedFilesList.length}`);
+            }
+
             await archive.close();
-            displayExtractedFiles(extractedFiles);
+
+            /**
+             * Step 4: Final verification.
+             */
+            if (finalExtractedFilesList.length === 0 && archivePassword && (hasEncrypted !== false || filesArray.length > 0)) {
+                console.warn("Extraction resulted in no files, prompting for password again.");
+                const newPassword = await promptForPassword(true);
+                if (newPassword === null) throw new Error('Extraction cancelled.');
+                return extractWithLibArchive(file, newPassword);
+            }
+
+            if (finalExtractedFilesList.length === 0 && isRar) {
+                throw new Error("No files extracted. Note: Only RAR v4 and older are supported. RAR v5 is not currently supported.");
+            }
+
+            displayExtractedFiles(finalExtractedFilesList);
 
         } catch (e) {
-            if (archive) await archive.close();
+            console.error("Fatal extraction error:", e);
+            if (archive) {
+                try { await archive.close(); } catch (err) {}
+            }
             throw e;
         }
     };
@@ -628,5 +742,5 @@ document.addEventListener('DOMContentLoaded', () => {
     resetBtn.addEventListener('click', resetApp);
     
     // Initial UI state
-    updatePasswordValidationUI();
+    updateModeUI();
 });
