@@ -1,3 +1,5 @@
+import { formatBytes } from './utils.js';
+
 document.addEventListener('DOMContentLoaded', () => {
     // The zip object is loaded from an external script and will be available on the window
     const zip = window.zip;
@@ -51,14 +53,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const iconTrash = document.getElementById('icon-trash').cloneNode(true);
 
     // --- HELPERS ---
-    const formatBytes = (bytes, decimals = 2) => {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-    };
 
     // --- UI UPDATE FUNCTIONS ---
     const renderFileList = () => {
