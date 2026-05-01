@@ -61,6 +61,26 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- UI UPDATE FUNCTIONS ---
+    const createFileElement = (file, index) => {
+        const fileElement = document.createElement('div');
+        fileElement.className = 'flex items-center justify-between bg-gray-700/50 p-3 rounded-lg animate-fade-in';
+        fileElement.innerHTML = `
+            <div class="flex items-center gap-3 overflow-hidden">
+                <div class="icon-container w-5 h-5 text-gray-400 flex-shrink-0"></div>
+                <span class="truncate text-sm" title="${file.name}">${file.name}</span>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0">
+                <span class="text-xs text-gray-400">${formatBytes(file.size)}</span>
+                <button data-index="${index}" class="remove-file-btn p-1 text-gray-400 hover:text-red-400 transition-colors">
+                    <div class="icon-container w-5 h-5"></div>
+                </button>
+            </div>
+        `;
+        fileElement.querySelector('.icon-container').appendChild(iconFile.cloneNode(true));
+        fileElement.querySelector('.remove-file-btn .icon-container').appendChild(iconTrash.cloneNode(true));
+        return fileElement;
+    };
+
     const renderFileList = () => {
         fileListEl.innerHTML = '';
         if (files.length === 0) {
@@ -73,23 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fileListContainer.classList.remove('hidden');
 
         files.forEach((file, index) => {
-            const fileElement = document.createElement('div');
-            fileElement.className = 'flex items-center justify-between bg-gray-700/50 p-3 rounded-lg animate-fade-in';
-            fileElement.innerHTML = `
-                <div class="flex items-center gap-3 overflow-hidden">
-                    <div class="icon-container w-5 h-5 text-gray-400 flex-shrink-0"></div>
-                    <span class="truncate text-sm" title="${file.name}">${file.name}</span>
-                </div>
-                <div class="flex items-center gap-3 flex-shrink-0">
-                    <span class="text-xs text-gray-400">${formatBytes(file.size)}</span>
-                    <button data-index="${index}" class="remove-file-btn p-1 text-gray-400 hover:text-red-400 transition-colors">
-                        <div class="icon-container w-5 h-5"></div>
-                    </button>
-                </div>
-            `;
-            fileElement.querySelector('.icon-container').appendChild(iconFile.cloneNode(true));
-            fileElement.querySelector('.remove-file-btn .icon-container').appendChild(iconTrash.cloneNode(true));
-            fileListEl.appendChild(fileElement);
+            fileListEl.appendChild(createFileElement(file, index));
         });
     };
 
