@@ -46,6 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- ICONS ---
     const iconCheck = document.getElementById('icon-check').cloneNode(true);
+
+    // --- CONSTANTS ---
+    const REGEX_NUMBER = /[0-9]/;
+    const REGEX_SPECIAL_CHAR = /[!@#$%^&*(),.?":{}|<>]/;
+    const REGEX_UPPER_CASE = /[A-Z]/;
     const iconClose = document.getElementById('icon-close').cloneNode(true);
     const iconFile = document.getElementById('icon-file').cloneNode(true);
     const iconTrash = document.getElementById('icon-trash').cloneNode(true);
@@ -164,9 +169,9 @@ document.addEventListener('DOMContentLoaded', () => {
     passwordInput.addEventListener('input', (e) => {
         password = e.target.value;
         passwordValidation.minLength = password.length >= 12;
-        passwordValidation.hasNumber = /[0-9]/.test(password);
-        passwordValidation.hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-        passwordValidation.hasUpperCase = /[A-Z]/.test(password);
+        passwordValidation.hasNumber = REGEX_NUMBER.test(password);
+        passwordValidation.hasSpecialChar = REGEX_SPECIAL_CHAR.test(password);
+        passwordValidation.hasUpperCase = REGEX_UPPER_CASE.test(password);
         updatePasswordValidationUI();
         updateCreateButtonState();
     });
