@@ -102,6 +102,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalUnlockBtn = document.getElementById('modal-unlock-btn');
     const modalErrorMessage = document.getElementById('modal-error-message');
 
+    // Help Modal
+    const helpBtn = document.getElementById('help-btn');
+    const helpModal = document.getElementById('help-modal');
+    const helpCloseBtn = document.getElementById('help-close-btn');
+    const helpDismissBtn = document.getElementById('help-dismiss-btn');
+
     // --- ICONS ---
     const iconCheck = document.getElementById('icon-check').cloneNode(true);
     const iconClose = document.getElementById('icon-close').cloneNode(true);
@@ -741,6 +747,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     resetBtn.addEventListener('click', resetApp);
     
+    // Help Modal Event Listeners
+    const openHelpModal = () => {
+        helpModal.classList.remove('hidden');
+    };
+
+    const closeHelpModal = () => {
+        helpModal.classList.add('hidden');
+    };
+
+    if (helpBtn) helpBtn.addEventListener('click', openHelpModal);
+    if (helpCloseBtn) helpCloseBtn.addEventListener('click', closeHelpModal);
+    if (helpDismissBtn) helpDismissBtn.addEventListener('click', closeHelpModal);
+
+    // Close help modal on backdrop click
+    if (helpModal) {
+        helpModal.addEventListener('click', (e) => {
+            if (e.target === helpModal) {
+                closeHelpModal();
+            }
+        });
+    }
+
     // Initial UI state
     updateModeUI();
 });
