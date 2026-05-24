@@ -36,7 +36,12 @@
 
     <div class="min-h-screen flex items-center justify-center p-4">
         <div class="w-full max-w-3xl mx-auto">
-            <header class="text-center mb-8">
+            <header class="text-center mb-8 relative">
+                <button id="help-btn" class="absolute top-0 right-0 p-2 text-gray-400 hover:text-white transition-colors" title="Help">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
                 <div class="flex items-center justify-center gap-4">
                     <svg class="w-12 h-12 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-3 9h-2v2h-2v-2h-2v-2h2v-2h2v2h2v2z" />
@@ -149,6 +154,48 @@
                 <p>Uses strong encryption for password-protected archives.</p>
                 <p>Created by Jonas Lund</p>
             </footer>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-gray-800 rounded-2xl shadow-2xl p-6 w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-white">How to use SecureZip Pro</h3>
+                <button id="help-close-btn" class="text-gray-400 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="text-gray-300 space-y-4 text-sm">
+                <div>
+                    <h4 class="font-semibold text-blue-400">Compressing Files</h4>
+                    <p>Select files to compress into a new ZIP archive. You can optionally protect the archive with a strong password. Adjust the compression level to balance between file size and processing speed.</p>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-blue-400">Extracting Archives</h4>
+                    <p>Select an existing archive to extract its contents. If the archive is password protected, you will be prompted to enter the password.</p>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-blue-400">Supported Formats</h4>
+                    <ul class="list-disc pl-5 mt-1">
+                        <li><strong>Compress:</strong> ZIP</li>
+                        <li><strong>Extract:</strong> ZIP, 7z, RAR (v4 and older)</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-blue-400">Limits & Known Issues</h4>
+                    <ul class="list-disc pl-5 mt-1">
+                        <li><strong>RAR v5</strong> format is currently <strong>not supported</strong>.</li>
+                        <li>Very large files (typically > 1GB) might fail to process due to browser memory limits.</li>
+                        <li>All processing is done locally in your browser, no files are sent to any server.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button id="help-dismiss-btn" class="py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors">Close</button>
+            </div>
         </div>
     </div>
 
